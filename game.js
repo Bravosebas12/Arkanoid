@@ -23,8 +23,35 @@ const BLOCKS_ORIGIN_Y = 80;
 
 const BLOCK_SCORE = 10;
 const START_LIVES = 3;
+const LAST_LEVEL = LEVELS.length;
+
+const PAUSE_BTN_W = 60;
+const PAUSE_BTN_H = 60;
+const PAUSE_BTN_GAP = 20;
+const PAUSE_BTN_Y = 320;
+const PAUSE_ROW_W = LAST_LEVEL * PAUSE_BTN_W + ( LAST_LEVEL - 1 ) * PAUSE_BTN_GAP;
+
+const PAUSE_BUTTONS = LEVELS.map( ( _, i ) => ( {
+  level: i + 1,
+  x: ( WIDTH - PAUSE_ROW_W ) / 2 + i * ( PAUSE_BTN_W + PAUSE_BTN_GAP ),
+  y: PAUSE_BTN_Y,
+  w: PAUSE_BTN_W,
+  h: PAUSE_BTN_H,
+} ) );
+
+const bounceSound = new Audio( 'assets/sounds/ball-bounce.mp3' );
+const breakSound = new Audio( 'assets/sounds/break-sound.mp3' );
+
+// cloneNode() per hit so overlapping effects never cut each other off.
+function playSound( sound ) {
+  const node = sound.cloneNode();
+  const played = node.play();
+  if ( played && played.catch ) played.catch( () => {} );
+}
 
 let gameState = 'playing';
+let currentLevel = 1;
+let isPaused = false;
 let score = 0;
 let lives = START_LIVES;
 
@@ -35,28 +62,30 @@ let explosions = [];
 
 const keys = { left: false, right: false };
 
-function buildBlocks() {
-  const grid = [];
-  for ( let row = 0; row < BLOCK_ROWS; row++ ) {
-    for ( let col = 0; col < BLOCK_COLS; col++ ) {
-      grid.push( {
-        x: BLOCKS_ORIGIN_X + col * BLOCK_W,
-        y: BLOCKS_ORIGIN_Y + row * BLOCK_H,
-        w: BLOCK_W,
-        h: BLOCK_H,
-        color: BLOCK_COLORS[ row ],
-        alive: true,
-      } );
-    }
-  }
-  return grid;
+function buildBlocks( level ) {
+  return LEVELS[ level - 1 ].blocks.map( cell => ( {
+    x: BLOCKS_ORIGIN_X + cell.col * BLOCK_W,
+    y: BLOCKS_ORIGIN_Y + cell.row * BLOCK_H,
+    w: BLOCK_W,
+    h: BLOCK_H,
+    color: cell.color,
+    alive: true,
+  } ) );
+}
+
+function loadLevel( level ) {
+  currentLevel = level;
+  blocks = buildBlocks( level );
+  explosions = [];
+  resetBall();
 }
 
 function resetBall() {
+  const speed = LEVELS[ currentLevel - 1 ].speed;
   ball.x = paddle.x + paddle.w / 2 - ball.w / 2;
   ball.y = paddle.y - ball.h;
-  ball.vx = BALL_VX;
-  ball.vy = BALL_VY;
+  ball.vx = BALL_VX * speed;
+  ball.vy = BALL_VY * speed;
 }
 
 function clampPaddle() {
@@ -90,19 +119,23 @@ function updateBall( dt ) {
   if ( ball.x <= 0 ) {
     ball.x = 0;
     ball.vx = Math.abs( ball.vx );
+    playSound( bounceSound );
   } else if ( ball.x + ball.w >= WIDTH ) {
     ball.x = WIDTH - ball.w;
     ball.vx = -Math.abs( ball.vx );
+    playSound( bounceSound );
   }
   if ( ball.y <= 0 ) {
     ball.y = 0;
     ball.vy = Math.abs( ball.vy );
+    playSound( bounceSound );
   }
 
   // Paddle: only bounce while descending, so the ball never sticks.
   if ( ball.vy > 0 && overlaps( ball, paddle ) ) {
     ball.y = paddle.y - ball.h;
     ball.vy = -Math.abs( ball.vy );
+    playSound( bounceSound );
   }
 
   // Fell below the canvas.
@@ -118,10 +151,17 @@ function updateBlocks() {
     explosions.push( { x: block.x, y: block.y, w: block.w, h: block.h, color: block.color, elapsed: 0 } );
     score += BLOCK_SCORE;
     ball.vy = -ball.vy;
+    playSound( breakSound );
     break; // One block per frame keeps the bounce unambiguous.
   }
 
-  if ( blocks.every( b => !b.alive ) ) gameState = 'win';
+  if ( !blocks.every( b => !b.alive ) ) return;
+
+  if ( currentLevel < LAST_LEVEL ) {
+    loadLevel( currentLevel + 1 );
+  } else {
+    gameState = 'win';
+  }
 }
 
 function updateExplosions( dt ) {
@@ -130,7 +170,7 @@ function updateExplosions( dt ) {
 }
 
 function update( dt ) {
-  if ( gameState !== 'playing' ) return;
+  if ( gameState !== 'playing' || isPaused ) return;
   updatePaddle( dt );
   updateBall( dt );
   updateBlocks();
@@ -145,8 +185,35 @@ function drawHud() {
   ctx.textAlign = 'left';
   ctx.fillText( `SCORE ${ score }`, 16, 16 );
 
+  ctx.textAlign = 'center';
+  ctx.fillText( `NIVEL ${ currentLevel }`, WIDTH / 2, 16 );
+
   ctx.textAlign = 'right';
   ctx.fillText( `VIDAS ${ lives }`, WIDTH - 16, 16 );
+}
+
+function drawPauseOverlay() {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillRect( 0, 0, WIDTH, HEIGHT );
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 56px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText( 'PAUSA', WIDTH / 2, 220 );
+
+  ctx.font = '18px monospace';
+  ctx.fillText( 'Elige un nivel', WIDTH / 2, 280 );
+
+  for ( const btn of PAUSE_BUTTONS ) {
+    ctx.strokeStyle = btn.level === currentLevel ? '#ff0' : '#fff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect( btn.x, btn.y, btn.w, btn.h );
+
+    ctx.fillStyle = btn.level === currentLevel ? '#ff0' : '#fff';
+    ctx.font = 'bold 28px monospace';
+    ctx.fillText( String( btn.level ), btn.x + btn.w / 2, btn.y + btn.h / 2 );
+  }
 }
 
 function drawOverlay() {
@@ -157,7 +224,7 @@ function drawOverlay() {
   ctx.font = 'bold 56px monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText( gameState === 'win' ? '\u00A1GANASTE!' : 'GAME OVER', WIDTH / 2, HEIGHT / 2 );
+  ctx.fillText( gameState === 'win' ? '\u00A1Completaste el juego!' : 'GAME OVER', WIDTH / 2, HEIGHT / 2 );
 }
 
 function draw() {
@@ -178,10 +245,12 @@ function draw() {
   drawSprite( ctx, 'paddle', paddle.x, paddle.y, paddle.w, paddle.h );
   drawSprite( ctx, 'ball', ball.x, ball.y, ball.w, ball.h );
 
-  if ( gameState === 'playing' ) {
-    drawHud();
-  } else {
+  if ( gameState !== 'playing' ) {
     drawOverlay();
+  } else if ( isPaused ) {
+    drawPauseOverlay();
+  } else {
+    drawHud();
   }
 }
 
@@ -196,15 +265,35 @@ function loop( timestamp ) {
   requestAnimationFrame( loop );
 }
 
-canvas.addEventListener( 'mousemove', e => {
+function canvasPoint( e ) {
   const rect = canvas.getBoundingClientRect();
-  paddle.x = ( e.clientX - rect.left ) * ( WIDTH / rect.width ) - paddle.w / 2;
+  return {
+    x: ( e.clientX - rect.left ) * ( WIDTH / rect.width ),
+    y: ( e.clientY - rect.top ) * ( HEIGHT / rect.height ),
+  };
+}
+
+canvas.addEventListener( 'mousemove', e => {
+  if ( isPaused ) return;
+  paddle.x = canvasPoint( e ).x - paddle.w / 2;
   clampPaddle();
+} );
+
+canvas.addEventListener( 'click', e => {
+  if ( !isPaused ) return;
+  const { x, y } = canvasPoint( e );
+  const hit = PAUSE_BUTTONS.find(
+    btn => x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h,
+  );
+  if ( !hit ) return;
+  loadLevel( hit.level );
+  isPaused = false;
 } );
 
 window.addEventListener( 'keydown', e => {
   if ( e.key === 'ArrowLeft' ) keys.left = true;
   if ( e.key === 'ArrowRight' ) keys.right = true;
+  if ( e.key === 'p' || e.key === 'P' || e.key === 'Escape' ) isPaused = !isPaused;
 } );
 
 window.addEventListener( 'keyup', e => {
@@ -212,6 +301,5 @@ window.addEventListener( 'keyup', e => {
   if ( e.key === 'ArrowRight' ) keys.right = false;
 } );
 
-blocks = buildBlocks();
-resetBall();
+loadLevel( 1 );
 loadSpritesheet( () => requestAnimationFrame( loop ) );

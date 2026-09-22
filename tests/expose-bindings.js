@@ -9,3 +9,9 @@ globalThis.G = {
 globalThis.G.__defineGetter__( 'explosions', () => explosions );
 globalThis.G.EXPLOSION_DURATION = EXPLOSION_DURATION;
 globalThis.G.EXPLOSION_FRAMES = EXPLOSION_FRAMES;
+globalThis.G.__defineGetter__( 'currentLevel', () => currentLevel );
+globalThis.G.__defineGetter__( 'isPaused', () => isPaused );
+globalThis.G.__defineSetter__( 'isPaused', v => { isPaused = v; } );
+globalThis.G.LEVELS = LEVELS;
+globalThis.G.loadLevel = loadLevel;
+globalThis.G.PAUSE_BUTTONS = PAUSE_BUTTONS;
