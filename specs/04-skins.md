@@ -138,23 +138,23 @@ Detalles obligatorios:
 
 ## Criterios de aceptación
 
-- [ ] `SKINS` define exactamente 4 skins con id `retro`, `neon`, `pastel` y `pixel`
-- [ ] Cada skin expone `background`, `hudColor`, `overlayFill`, `overlayColor` y las 4 funciones de dibujo
-- [ ] La skin por defecto al primer arranque es `retro` y se ve igual que antes de este spec
-- [ ] El overlay de pausa muestra 4 botones de skin bajo los 5 de nivel
-- [ ] El botón de la skin activa se distingue visualmente de los demás
-- [ ] Al hacer clic en un botón de skin, el juego se redibuja con esa skin sin recargar
-- [ ] Al cambiar de skin se conservan score, vidas, nivel, bloques vivos y posición de la pelota
-- [ ] Al cambiar de skin la pausa sigue activa
-- [ ] La skin elegida se guarda en `localStorage` bajo `arkanoid.skin`
-- [ ] Al recargar la página se restaura la skin guardada
-- [ ] Un valor inválido o ausente en `localStorage` cae a `retro` sin lanzar
-- [ ] Si `localStorage` lanza al leer o al escribir, el juego sigue funcionando con `retro`
-- [ ] El fondo del canvas cambia según la skin activa
-- [ ] El HUD es legible en las 4 skins
-- [ ] La explosión dura `EXPLOSION_DURATION` en las 4 skins
-- [ ] Tras dibujar con la skin Neon, `shadowBlur` queda en `0` y no afecta al HUD
-- [ ] Ninguna skin altera la geometría: bloques 64×24, paddle 162×14, pelota 16×16
+- [x] `SKINS` define exactamente 4 skins con id `retro`, `neon`, `pastel` y `pixel`
+- [x] Cada skin expone `background`, `hudColor`, `overlayFill`, `overlayColor` y las 4 funciones de dibujo
+- [x] La skin por defecto al primer arranque es `retro` y se ve igual que antes de este spec
+- [x] El overlay de pausa muestra 4 botones de skin bajo los 5 de nivel
+- [x] El botón de la skin activa se distingue visualmente de los demás
+- [x] Al hacer clic en un botón de skin, el juego se redibuja con esa skin sin recargar
+- [x] Al cambiar de skin se conservan score, vidas, nivel, bloques vivos y posición de la pelota
+- [x] Al cambiar de skin la pausa sigue activa
+- [x] La skin elegida se guarda en `localStorage` bajo `arkanoid.skin`
+- [x] Al recargar la página se restaura la skin guardada
+- [x] Un valor inválido o ausente en `localStorage` cae a `retro` sin lanzar
+- [x] Si `localStorage` lanza al leer o al escribir, el juego sigue funcionando con `retro`
+- [x] El fondo del canvas cambia según la skin activa
+- [x] El HUD es legible en las 4 skins
+- [x] La explosión dura `EXPLOSION_DURATION` en las 4 skins
+- [x] Tras dibujar con la skin Neon, `shadowBlur` queda en `0` y no afecta al HUD
+- [x] Ninguna skin altera la geometría: bloques 64×24, paddle 162×14, pelota 16×16
 
 ---
 
@@ -187,3 +187,15 @@ Detalles obligatorios:
 - **El arnés headless no valida estética.** Puede comprobar que se llama a la función de la
   skin correcta, que la geometría no cambia y que `shadowBlur` se restaura, pero que una skin
   se vea bien solo se comprueba en el navegador.
+
+> Desviaciones y hallazgos de la implementación:
+>
+> - **Botón activo invertido.** El acento fijo `#ffcc00` previsto resultó ilegible sobre el
+>   fondo crema de Pastel. El botón activo se pinta con el color base relleno y la etiqueta
+>   en el color de fondo de la skin, que contrasta en las cuatro.
+> - **Pixel art necesita margen.** Sin él, los bloques contiguos de una misma fila se fundían
+>   en una barra continua. Se aplica un inset de 2 px (`PIXEL_PAD`). Detectado en el navegador,
+>   no por el arnés; hay test de regresión para las tres skins procedurales.
+> - **Botones de skin en `y = 426`**, no en 420, para separarlos de la etiqueta del selector.
+> - **Coste de render medido en Chrome:** retro 0.27 ms/frame, neon 0.10, pastel 0.14,
+>   pixel 1.04. El más caro usa un 6 % del presupuesto de 16.7 ms a 60 fps.
