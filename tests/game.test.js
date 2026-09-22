@@ -87,5 +87,73 @@ t('HUD score visible', txt.some(s=>/^SCORE /.test(s)), txt.join(' | '));
 t('HUD vidas visible', txt.some(s=>/^VIDAS /.test(s)), txt.join(' | '));
 t('sin HUD en overlay', (g.gameState='win', ops.length=0, g.draw(), !ops.some(o=>/^SCORE/.test(o.a&&o.a[0]))));
 
+
+// --- 02: animacion de explosion ---
+const expDraws = () => ops.filter(o=>o.op==='img' && o.a[1]>=256);
+
+park(); g.blocks.forEach(b=>b.alive=true);
+t('array explosions existe', Array.isArray(g.explosions), typeof g.explosions);
+g.explosions.length=0;
+
+const b1=g.blocks[13];
+Object.assign(g.ball,{x:b1.x+10,y:b1.y+5,vx:0,vy:-300}); g.update(0.001); park();
+t('explosion lanzada al romper bloque', g.explosions.length===1, g.explosions.length);
+const e1=g.explosions[0];
+t('explosion en posicion del bloque', e1.x===b1.x&&e1.y===b1.y, e1.x+','+e1.y);
+t('explosion con tamanio del bloque', e1.w===b1.w&&e1.h===b1.h, e1.w+'x'+e1.h);
+t('explosion hereda color del bloque', e1.color===b1.color, e1.color);
+t('color es clave valida de EXPLOSION_FRAMES', Array.isArray(g.EXPLOSION_FRAMES[e1.color]) && g.EXPLOSION_FRAMES[e1.color].length===4);
+
+ops.length=0; g.draw();
+t('dibuja frame 0 al inicio', expDraws().length===1 && expDraws()[0].a[1]===g.EXPLOSION_FRAMES[e1.color][0].sx, JSON.stringify(expDraws().map(d=>d.a[1])));
+
+g.update(0.05); // +50ms -> frame 1
+t('elapsed avanza en ms', Math.round(e1.elapsed)===51, e1.elapsed);
+ops.length=0; g.draw();
+t('dibuja frame 1 a ~50ms', expDraws()[0].a[1]===g.EXPLOSION_FRAMES[e1.color][1].sx);
+
+g.update(0.06); // ~111ms -> frame 2
+ops.length=0; g.draw();
+t('dibuja frame 2 a ~110ms', expDraws()[0].a[1]===g.EXPLOSION_FRAMES[e1.color][2].sx);
+
+g.update(0.03); // ~141ms -> frame 3
+ops.length=0; g.draw();
+t('dibuja frame 3 antes de terminar', expDraws()[0].a[1]===g.EXPLOSION_FRAMES[e1.color][3].sx, e1.elapsed);
+
+g.update(0.02); // >150ms
+t('explosion eliminada tras EXPLOSION_DURATION', g.explosions.length===0, g.explosions.length);
+ops.length=0; g.draw();
+t('deja de dibujarse tras terminar', expDraws().length===0);
+
+// Multiples explosiones simultaneas e independientes
+park(); g.blocks.forEach(b=>b.alive=true); g.explosions.length=0;
+const bA=g.blocks[5], bB=g.blocks[55];
+t('bloques de colores distintos', bA.color!==bB.color, bA.color+'/'+bB.color);
+Object.assign(g.ball,{x:bA.x+10,y:bA.y+5,vx:0,vy:-300}); g.update(0.001);
+park(); g.update(0.06); // adelanta solo la primera
+Object.assign(g.ball,{x:bB.x+10,y:bB.y+5,vx:0,vy:-300}); g.update(0.001); park();
+t('dos explosiones en paralelo', g.explosions.length===2, g.explosions.length);
+const [eA,eB]=g.explosions;
+t('cada una con su propio elapsed', eA.elapsed>eB.elapsed, eA.elapsed+' vs '+eB.elapsed);
+t('cada una con su propio color', eA.color===bA.color&&eB.color===bB.color, eA.color+'/'+eB.color);
+ops.length=0; g.draw();
+t('se dibujan las dos a la vez', expDraws().length===2, expDraws().length);
+t('frames distintos por explosion', expDraws()[0].a[1]!==expDraws()[1].a[1]);
+
+// La mas vieja expira sin afectar a la mas nueva
+g.update(0.09);
+t('expira solo la terminada', g.explosions.length===1 && g.explosions[0].color===bB.color, g.explosions.map(e=>e.color).join(','));
+
+// El bloque no colisiona mientras la explosion corre
+park(); g.blocks.forEach(b=>b.alive=true); g.explosions.length=0;
+const b3=g.blocks[30], sc=g.score;
+Object.assign(g.ball,{x:b3.x+10,y:b3.y+5,vx:0,vy:-300}); g.update(0.001);
+Object.assign(g.ball,{x:b3.x+10,y:b3.y+5,vx:0,vy:-300}); g.update(0.001);
+t('bloque destruido no vuelve a puntuar', g.score===sc+10, g.score-sc);
+
+// Las explosiones no bloquean el fin de partida
+park(); g.blocks.forEach(b=>b.alive=false); g.blocks[0].alive=true; g.explosions.length=0;
+Object.assign(g.ball,{x:g.blocks[0].x+10,y:g.blocks[0].y+5,vx:0,vy:-300}); g.update(0.001);
+t('victoria con explosion activa', g.gameState==='win' && g.explosions.length===1, g.gameState+'/'+g.explosions.length);
 console.log('\n'+pass+' pass, '+fail+' fail');
 process.exit(fail?1:0);

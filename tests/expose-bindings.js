@@ -6,3 +6,6 @@ globalThis.G = {
   get gameState(){return gameState}, set gameState(v){gameState=v},
   update, draw,
 };
+globalThis.G.__defineGetter__( 'explosions', () => explosions );
+globalThis.G.EXPLOSION_DURATION = EXPLOSION_DURATION;
+globalThis.G.EXPLOSION_FRAMES = EXPLOSION_FRAMES;
