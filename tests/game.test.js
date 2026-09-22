@@ -12,9 +12,12 @@ const sandbox={console,Math,setTimeout,
   window:{addEventListener:(t,f)=>{winL[t]=f}},
   Image:class{set src(v){this.onload&&this.onload();}},
   requestAnimationFrame:()=>{}};
+const played=[];
+sandbox.Audio=class{constructor(src){this.src=src;}cloneNode(){const src=this.src;return{src,play(){played.push(src);}};}play(){played.push(this.src);}};
 sandbox.globalThis=sandbox;
 vm.createContext(sandbox);
 vm.runInContext(fs.readFileSync(__dirname+'/../assets/spritesheet.js','utf8'),sandbox);
+vm.runInContext(fs.readFileSync(__dirname+'/../levels.js','utf8'),sandbox);
 vm.runInContext(fs.readFileSync(__dirname+'/../game.js','utf8'),sandbox);
 vm.runInContext(fs.readFileSync(__dirname+'/expose-bindings.js','utf8'),sandbox);
 const g=sandbox.G;
@@ -45,7 +48,7 @@ listeners.mousemove({clientX:-500}); t('mouse: clamp izquierda', g.paddle.x===0)
 listeners.mousemove({clientX:5000}); t('mouse: clamp derecha', g.paddle.x===638);
 listeners.mousemove({clientX:400});  t('mouse: centra paddle', g.paddle.x===319, g.paddle.x);
 
-park(); g.blocks.forEach(b=>b.alive=false);
+park(); g.loadLevel(1);
 park(); Object.assign(g.ball,{x:2,y:300,vx:-200,vy:-300}); g.update(0.05);
 t('rebote pared izquierda', g.ball.vx>0, g.ball.vx);
 park(); Object.assign(g.ball,{x:790,y:300,vx:200});        g.update(0.05);
@@ -56,14 +59,14 @@ t('rebote techo', g.ball.vy>0, g.ball.vy);
 park(); g.paddle.x=300; Object.assign(g.ball,{x:360,y:g.paddle.y-10,vx:0,vy:300}); g.update(0.001);
 t('rebote en paddle', g.ball.vy<0, g.ball.vy);
 
-park(); g.blocks.forEach(b=>b.alive=true);
+park(); g.loadLevel(1); g.blocks.forEach(b=>b.alive=true);
 const before=g.score, target=g.blocks[25];
 Object.assign(g.ball,{x:target.x+10,y:target.y+5,vx:0,vy:-300}); g.update(0.001);
 t('bloque destruido', target.alive===false);
 t('score +10', g.score===before+10, g.score);
 t('rebote en bloque', g.ball.vy>0, g.ball.vy);
 
-park(); g.blocks.forEach(b=>b.alive=true);
+park(); g.loadLevel(1); g.blocks.forEach(b=>b.alive=true);
 const lv=g.lives; Object.assign(g.ball,{x:400,y:700,vx:0,vy:300}); g.update(0.001);
 t('pierde una vida', g.lives===lv-1, g.lives);
 t('pelota reposicionada', g.ball.y===g.paddle.y-16 && g.ball.vy===-300);
@@ -74,12 +77,12 @@ t('gameover con 0 vidas', g.gameState==='gameover'&&g.lives===0, g.gameState+'/'
 ops.length=0; g.draw();
 t('overlay GAME OVER', ops.some(o=>o.op==='text'&&o.a[0]==='GAME OVER'));
 
-g.gameState='playing'; g.lives=3;
+g.gameState='playing'; g.lives=3; g.loadLevel(5);
 g.blocks.forEach(b=>b.alive=false); const last=g.blocks[0]; last.alive=true;
 Object.assign(g.ball,{x:last.x+10,y:last.y+5,vx:0,vy:-300}); g.update(0.001);
 t('victoria', g.gameState==='win', g.gameState);
 ops.length=0; g.draw();
-t('overlay GANASTE', ops.some(o=>o.op==='text'&&o.a[0]==='\u00A1GANASTE!'), JSON.stringify(ops.filter(o=>o.op==='text').map(o=>o.a[0])));
+t('overlay fin de juego', ops.some(o=>o.op==='text'&&o.a[0]==='\u00A1Completaste el juego!'), JSON.stringify(ops.filter(o=>o.op==='text').map(o=>o.a[0])));
 
 g.gameState='playing'; ops.length=0; g.draw();
 const txt=ops.filter(o=>o.op==='text').map(o=>o.a[0]);
@@ -91,7 +94,7 @@ t('sin HUD en overlay', (g.gameState='win', ops.length=0, g.draw(), !ops.some(o=
 // --- 02: animacion de explosion ---
 const expDraws = () => ops.filter(o=>o.op==='img' && o.a[1]>=256);
 
-park(); g.blocks.forEach(b=>b.alive=true);
+park(); g.loadLevel(1); g.blocks.forEach(b=>b.alive=true);
 t('array explosions existe', Array.isArray(g.explosions), typeof g.explosions);
 g.explosions.length=0;
 
@@ -152,8 +155,101 @@ Object.assign(g.ball,{x:b3.x+10,y:b3.y+5,vx:0,vy:-300}); g.update(0.001);
 t('bloque destruido no vuelve a puntuar', g.score===sc+10, g.score-sc);
 
 // Las explosiones no bloquean el fin de partida
-park(); g.blocks.forEach(b=>b.alive=false); g.blocks[0].alive=true; g.explosions.length=0;
+park(); g.loadLevel(5); g.blocks.forEach(b=>b.alive=false); g.blocks[0].alive=true; g.explosions.length=0;
 Object.assign(g.ball,{x:g.blocks[0].x+10,y:g.blocks[0].y+5,vx:0,vy:-300}); g.update(0.001);
 t('victoria con explosion activa', g.gameState==='win' && g.explosions.length===1, g.gameState+'/'+g.explosions.length);
+
+// --- 03: sonidos y niveles ---
+const SPEEDS=[1.0,1.1,1.21,1.33,1.46];
+const colorsOf = lv => [...new Set(lv.blocks.map(b=>b.color))].sort().join(',');
+
+t('LEVELS tiene 5 niveles', g.LEVELS.length===5, g.LEVELS.length);
+t('multiplicadores de velocidad correctos', g.LEVELS.every((l,i)=>l.speed===SPEEDS[i]), g.LEVELS.map(l=>l.speed).join(','));
+t('todo bloque tiene col/row/color validos', g.LEVELS.every(l=>l.blocks.every(b=>b.col>=0&&b.col<10&&b.row>=0&&b.row<6&&typeof b.color==='string')));
+t('sin celdas duplicadas en un nivel', g.LEVELS.every(l=>new Set(l.blocks.map(b=>b.col+','+b.row)).size===l.blocks.length));
+t('paletas distintas entre niveles', new Set(g.LEVELS.map(colorsOf)).size===5, g.LEVELS.map(colorsOf).join(' | '));
+
+// Patrones
+t('N1 parrilla completa 10x6', g.LEVELS[0].blocks.length===60);
+const l2=g.LEVELS[1], widths=[0,1,2,3,4,5].map(r=>l2.blocks.filter(b=>b.row===r).length);
+t('N2 piramide: filas crecen hacia abajo', widths.every((w,i)=>i===0||w>=widths[i-1]) && widths[5]>widths[1], widths.join(','));
+t('N2 piramide: filas centradas', [1,2,3,4,5].every(r=>{const c=l2.blocks.filter(b=>b.row===r).map(b=>b.col);return Math.min(...c)+Math.max(...c)===9;}), widths.join(','));
+t('N3 ajedrez: solo (col+row) pares', g.LEVELS[2].blocks.every(b=>(b.col+b.row)%2===0) && g.LEVELS[2].blocks.length===30, g.LEVELS[2].blocks.length);
+const gaps=[0,1,2,3,4,5].map(r=>10-g.LEVELS[3].blocks.filter(b=>b.row===r).length);
+t('N4 filas con 3-4 huecos', gaps.every(x=>x>=3&&x<=4), gaps.join(','));
+const inFrameOrCross=b=>b.row===0||b.row===5||b.col===0||b.col===9||b.row===2||b.row===3||b.col===4||b.col===5;
+t('N5 marco + cruz', g.LEVELS[4].blocks.every(inFrameOrCross) && g.LEVELS[4].blocks.some(b=>b.col===4&&b.row===2), g.LEVELS[4].blocks.length);
+
+// Sonidos
+park(); g.loadLevel(1); played.length=0;
+Object.assign(g.ball,{x:2,y:300,vx:-200,vy:0}); g.update(0.05);
+t('rebote en pared suena ball-bounce', played.length===1 && /ball-bounce/.test(played[0]), JSON.stringify(played));
+played.length=0;
+g.paddle.x=300; Object.assign(g.ball,{x:360,y:g.paddle.y-10,vx:0,vy:300}); g.update(0.001);
+t('rebote en paddle suena ball-bounce', played.length===1 && /ball-bounce/.test(played[0]), JSON.stringify(played));
+played.length=0;
+park(); g.loadLevel(1); const bs=g.blocks[13];
+Object.assign(g.ball,{x:bs.x+10,y:bs.y+5,vx:0,vy:-300}); g.update(0.001);
+t('romper bloque suena break-sound', played.length===1 && /break-sound/.test(played[0]), JSON.stringify(played));
+t('romper bloque no suena ball-bounce', !played.some(s=>/ball-bounce/.test(s)), JSON.stringify(played));
+played.length=0;
+park(); Object.assign(g.ball,{x:2,y:300,vx:-200,vy:0}); g.update(0.05); g.update(0.0001);
+Object.assign(g.ball,{x:798-16,y:300,vx:200}); g.update(0.05);
+t('sonidos solapados no se cancelan', played.length===2, JSON.stringify(played));
+
+// loadLevel y velocidad
+g.loadLevel(1); const v1=Math.abs(g.ball.vy);
+g.loadLevel(5); const v5=Math.abs(g.ball.vy);
+t('loadLevel(5) fija nivel 5', g.currentLevel===5);
+t('nivel 5 mas rapido que nivel 1', Math.round(v5/v1*100)/100===1.46, v1+' -> '+v5);
+t('loadLevel reconstruye bloques del nivel', g.blocks.length===g.LEVELS[4].blocks.length, g.blocks.length);
+t('loadLevel repone la pelota sobre el paddle', g.ball.y===g.paddle.y-16);
+t('loadLevel deja todos los bloques vivos', g.blocks.every(b=>b.alive));
+
+// Avance automatico y score acumulado
+park(); g.loadLevel(1); g.score=0;
+g.blocks.forEach(b=>b.alive=false); g.blocks[0].alive=true;
+Object.assign(g.ball,{x:g.blocks[0].x+10,y:g.blocks[0].y+5,vx:0,vy:-300}); g.update(0.001);
+t('avanza al nivel 2 al limpiar el 1', g.currentLevel===2 && g.gameState==='playing', g.currentLevel+'/'+g.gameState);
+t('score acumula entre niveles', g.score===10, g.score);
+t('nivel 2 recarga sus bloques', g.blocks.length===g.LEVELS[1].blocks.length, g.blocks.length);
+
+park(); g.loadLevel(5); const scoreBefore=g.score;
+g.blocks.forEach(b=>b.alive=false); g.blocks[0].alive=true;
+Object.assign(g.ball,{x:g.blocks[0].x+10,y:g.blocks[0].y+5,vx:0,vy:-300}); g.update(0.001);
+t('limpiar nivel 5 gana el juego', g.gameState==='win' && g.currentLevel===5, g.gameState+'/'+g.currentLevel);
+t('score sigue acumulando en el ultimo nivel', g.score===scoreBefore+10, g.score);
+ops.length=0; g.draw();
+t('overlay Completaste el juego', ops.some(o=>o.op==='text'&&o.a[0]==='\u00A1Completaste el juego!'), JSON.stringify(ops.filter(o=>o.op==='text').map(o=>o.a[0])));
+
+// Pausa
+park(); g.loadLevel(1); g.isPaused=false;
+winL.keydown({key:'p'}); t('tecla p pausa', g.isPaused===true);
+winL.keydown({key:'p'}); t('tecla p reanuda', g.isPaused===false);
+winL.keydown({key:'Escape'}); t('Escape pausa', g.isPaused===true);
+winL.keydown({key:'Escape'}); t('Escape reanuda', g.isPaused===false);
+
+winL.keydown({key:'p'});
+Object.assign(g.ball,{x:400,y:300,vx:200,vy:200});
+const frozen={x:g.ball.x,y:g.ball.y}, pScore=g.score;
+g.update(0.1);
+t('en pausa la pelota no avanza', g.ball.x===frozen.x&&g.ball.y===frozen.y, g.ball.x+','+g.ball.y);
+t('en pausa el score no cambia', g.score===pScore);
+ops.length=0; g.draw();
+const ptxt=ops.filter(o=>o.op==='text').map(o=>o.a[0]);
+t('overlay de pausa muestra PAUSA', ptxt.includes('PAUSA'), ptxt.join('|'));
+t('overlay de pausa muestra 5 botones', ['1','2','3','4','5'].every(n=>ptxt.includes(n)), ptxt.join('|'));
+t('PAUSE_BUTTONS define 5 rectangulos', g.PAUSE_BUTTONS.length===5 && g.PAUSE_BUTTONS.every(b=>b.w>0&&b.h>0));
+
+const btn3=g.PAUSE_BUTTONS[2];
+listeners.click({clientX:btn3.x+btn3.w/2, clientY:btn3.y+btn3.h/2});
+t('clic en boton 3 carga nivel 3', g.currentLevel===3, g.currentLevel);
+t('clic en boton 3 quita la pausa', g.isPaused===false);
+t('nivel 3 con su velocidad', Math.round(Math.abs(g.ball.vy)/300*100)/100===1.21, g.ball.vy);
+
+// HUD de nivel
+park(); g.loadLevel(2); ops.length=0; g.draw();
+const htxt=ops.filter(o=>o.op==='text').map(o=>o.a[0]);
+t('HUD muestra el nivel', htxt.some(s=>/^NIVEL 2$/.test(s)), htxt.join(' | '));
 console.log('\n'+pass+' pass, '+fail+' fail');
 process.exit(fail?1:0);
