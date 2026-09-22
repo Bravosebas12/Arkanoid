@@ -39,6 +39,40 @@ const PAUSE_BUTTONS = LEVELS.map( ( _, i ) => ( {
   h: PAUSE_BTN_H,
 } ) );
 
+const SKIN_BTN_W = 120;
+const SKIN_BTN_H = 44;
+const SKIN_BTN_GAP = 16;
+const SKIN_BTN_Y = 426;
+const SKIN_IDS = Object.keys( SKINS );
+const SKIN_ROW_W = SKIN_IDS.length * SKIN_BTN_W + ( SKIN_IDS.length - 1 ) * SKIN_BTN_GAP;
+
+const SKIN_BUTTONS = SKIN_IDS.map( ( id, i ) => ( {
+  id,
+  label: SKINS[ id ].label,
+  x: ( WIDTH - SKIN_ROW_W ) / 2 + i * ( SKIN_BTN_W + SKIN_BTN_GAP ),
+  y: SKIN_BTN_Y,
+  w: SKIN_BTN_W,
+  h: SKIN_BTN_H,
+} ) );
+
+// localStorage throws outright in private mode or with cookies blocked,
+// so both the read and the write are guarded.
+function readStoredSkin() {
+  try {
+    const stored = localStorage.getItem( SKIN_STORAGE_KEY );
+    if ( stored && SKINS[ stored ] ) return stored;
+  } catch ( e ) { /* storage unavailable, fall through */ }
+  return 'retro';
+}
+
+function setSkin( id ) {
+  if ( !SKINS[ id ] ) return;
+  currentSkin = id;
+  try {
+    localStorage.setItem( SKIN_STORAGE_KEY, id );
+  } catch ( e ) { /* preference is cosmetic, losing it is not fatal */ }
+}
+
 const bounceSound = new Audio( 'assets/sounds/ball-bounce.mp3' );
 const breakSound = new Audio( 'assets/sounds/break-sound.mp3' );
 
@@ -52,6 +86,7 @@ function playSound( sound ) {
 let gameState = 'playing';
 let currentLevel = 1;
 let isPaused = false;
+let currentSkin = readStoredSkin();
 let score = 0;
 let lives = START_LIVES;
 
@@ -178,7 +213,7 @@ function update( dt ) {
 }
 
 function drawHud() {
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = SKINS[ currentSkin ].hudColor;
   ctx.font = '20px monospace';
   ctx.textBaseline = 'top';
 
@@ -192,11 +227,32 @@ function drawHud() {
   ctx.fillText( `VIDAS ${ lives }`, WIDTH - 16, 16 );
 }
 
+// The active button is inverted rather than tinted: a fixed accent colour is
+// unreadable on at least one skin (yellow on Pastel's cream background), while
+// swapping foreground and background always contrasts.
+function drawButton( ctx, btn, label, isActive, base, background, font ) {
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = base;
+
+  if ( isActive ) {
+    ctx.fillStyle = base;
+    ctx.fillRect( btn.x, btn.y, btn.w, btn.h );
+  }
+  ctx.strokeRect( btn.x, btn.y, btn.w, btn.h );
+
+  ctx.fillStyle = isActive ? background : base;
+  ctx.font = font;
+  ctx.fillText( label, btn.x + btn.w / 2, btn.y + btn.h / 2 );
+}
+
 function drawPauseOverlay() {
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  const skin = SKINS[ currentSkin ];
+  const base = skin.overlayColor;
+
+  ctx.fillStyle = skin.overlayFill;
   ctx.fillRect( 0, 0, WIDTH, HEIGHT );
 
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = base;
   ctx.font = 'bold 56px monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -206,21 +262,26 @@ function drawPauseOverlay() {
   ctx.fillText( 'Elige un nivel', WIDTH / 2, 280 );
 
   for ( const btn of PAUSE_BUTTONS ) {
-    ctx.strokeStyle = btn.level === currentLevel ? '#ff0' : '#fff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect( btn.x, btn.y, btn.w, btn.h );
+    drawButton( ctx, btn, String( btn.level ), btn.level === currentLevel,
+      base, skin.background, 'bold 28px monospace' );
+  }
 
-    ctx.fillStyle = btn.level === currentLevel ? '#ff0' : '#fff';
-    ctx.font = 'bold 28px monospace';
-    ctx.fillText( String( btn.level ), btn.x + btn.w / 2, btn.y + btn.h / 2 );
+  ctx.fillStyle = base;
+  ctx.font = '18px monospace';
+  ctx.fillText( 'Elige una skin', WIDTH / 2, 402 );
+
+  for ( const btn of SKIN_BUTTONS ) {
+    drawButton( ctx, btn, btn.label, btn.id === currentSkin,
+      base, skin.background, 'bold 18px monospace' );
   }
 }
 
 function drawOverlay() {
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  const skin = SKINS[ currentSkin ];
+  ctx.fillStyle = skin.overlayFill;
   ctx.fillRect( 0, 0, WIDTH, HEIGHT );
 
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = skin.overlayColor;
   ctx.font = 'bold 56px monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -228,22 +289,21 @@ function drawOverlay() {
 }
 
 function draw() {
-  ctx.fillStyle = '#000';
+  const skin = SKINS[ currentSkin ];
+
+  ctx.fillStyle = skin.background;
   ctx.fillRect( 0, 0, WIDTH, HEIGHT );
 
   for ( const block of blocks ) {
-    if ( block.alive ) drawSprite( ctx, 'block_' + block.color, block.x, block.y, block.w, block.h );
+    if ( block.alive ) skin.drawBlock( ctx, block );
   }
 
   for ( const exp of explosions ) {
-    const frames = EXPLOSION_FRAMES[ exp.color ];
-    if ( !frames ) continue;
-    const i = Math.min( Math.floor( exp.elapsed / EXPLOSION_DURATION * frames.length ), frames.length - 1 );
-    drawFrame( ctx, frames[ i ], exp.x, exp.y, exp.w, exp.h );
+    skin.drawExplosion( ctx, exp, Math.min( exp.elapsed / EXPLOSION_DURATION, 1 ) );
   }
 
-  drawSprite( ctx, 'paddle', paddle.x, paddle.y, paddle.w, paddle.h );
-  drawSprite( ctx, 'ball', ball.x, ball.y, ball.w, ball.h );
+  skin.drawPaddle( ctx, paddle );
+  skin.drawBall( ctx, ball );
 
   if ( gameState !== 'playing' ) {
     drawOverlay();
@@ -282,9 +342,16 @@ canvas.addEventListener( 'mousemove', e => {
 canvas.addEventListener( 'click', e => {
   if ( !isPaused ) return;
   const { x, y } = canvasPoint( e );
-  const hit = PAUSE_BUTTONS.find(
-    btn => x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h,
-  );
+  const inside = btn => x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h;
+
+  // The skin buttons keep the pause open so skins can be compared side by side.
+  const skinHit = SKIN_BUTTONS.find( inside );
+  if ( skinHit ) {
+    setSkin( skinHit.id );
+    return;
+  }
+
+  const hit = PAUSE_BUTTONS.find( inside );
   if ( !hit ) return;
   loadLevel( hit.level );
   isPaused = false;
