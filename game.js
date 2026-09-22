@@ -31,6 +31,7 @@ let lives = START_LIVES;
 let paddle = { x: ( WIDTH - PADDLE_W ) / 2, y: PADDLE_Y, w: PADDLE_W, h: PADDLE_H };
 let ball = { x: 0, y: 0, w: BALL_SIZE, h: BALL_SIZE, vx: BALL_VX, vy: BALL_VY };
 let blocks = [];
+let explosions = [];
 
 const keys = { left: false, right: false };
 
@@ -114,6 +115,7 @@ function updateBlocks() {
     if ( !overlaps( ball, block ) ) continue;
 
     block.alive = false;
+    explosions.push( { x: block.x, y: block.y, w: block.w, h: block.h, color: block.color, elapsed: 0 } );
     score += BLOCK_SCORE;
     ball.vy = -ball.vy;
     break; // One block per frame keeps the bounce unambiguous.
@@ -122,11 +124,17 @@ function updateBlocks() {
   if ( blocks.every( b => !b.alive ) ) gameState = 'win';
 }
 
+function updateExplosions( dt ) {
+  for ( const exp of explosions ) exp.elapsed += dt * 1000;
+  explosions = explosions.filter( exp => exp.elapsed < EXPLOSION_DURATION );
+}
+
 function update( dt ) {
   if ( gameState !== 'playing' ) return;
   updatePaddle( dt );
   updateBall( dt );
   updateBlocks();
+  updateExplosions( dt );
 }
 
 function drawHud() {
@@ -158,6 +166,13 @@ function draw() {
 
   for ( const block of blocks ) {
     if ( block.alive ) drawSprite( ctx, 'block_' + block.color, block.x, block.y, block.w, block.h );
+  }
+
+  for ( const exp of explosions ) {
+    const frames = EXPLOSION_FRAMES[ exp.color ];
+    if ( !frames ) continue;
+    const i = Math.min( Math.floor( exp.elapsed / EXPLOSION_DURATION * frames.length ), frames.length - 1 );
+    drawFrame( ctx, frames[ i ], exp.x, exp.y, exp.w, exp.h );
   }
 
   drawSprite( ctx, 'paddle', paddle.x, paddle.y, paddle.w, paddle.h );
